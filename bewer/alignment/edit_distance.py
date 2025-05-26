@@ -1,11 +1,15 @@
 import random
 from itertools import chain
 from itertools import combinations
+from collections import defaultdict
 from enum import IntEnum
 from math import ceil
+from copy import deepcopy
+from functools import cached_property
 
 import numpy as np
 import regex as re
+from rapidfuzz.distance import Levenshtein
 
 from bewer.core.op import Op
 from bewer.core.op import OpType
@@ -24,10 +28,14 @@ def op_type_powerset():
 
 
 OP_TYPE_MAP = {op_type.value: op_type for op_type in OpType}
-
 OP_TYPE_COMBO_MAP = {i: op_types for i, op_types in enumerate(op_type_powerset())}
-
 OP_TYPE_COMBO_MAP_INV = {v: k for k, v in OP_TYPE_COMBO_MAP.items()}
+
+
+class OpTypeMerge(IntEnum):
+    MERGE = 4
+
+import IPython; IPython.embed(using=False, banner1="Edit distance module loaded. You can now use the functions and classes defined here.")
 
 
 def levenshtein_score_matrix(x, y, backtrace=False):
@@ -94,6 +102,83 @@ def levenshtein_score_matrix(x, y, backtrace=False):
         return D
 
 
+# def merge_state(x, y, score):
+#     return {
+#         "x": x,
+#         "y": y,
+#         "score": score,
+#     }
+
+
+# def span_score_matrix(x, y, backtrace=False):
+#     """
+#     Compute the edit distance score matrix between two sequences x (hyp) and y (ref).
+
+#     Args:
+#         x (str): The source/hypothesis sequence.
+#         y (str): The target/reference sequence.
+#         backtrace (bool): Whether to compute the backtrace matrix.
+
+#     Returns:
+#         np.ndarray: The score matrix.
+#         np.ndarray: The backtrace matrix, if backtrace=True.
+#     """
+#     if isinstance(x, str):
+#         x = x.split()
+#     if isinstance(y, str):
+#         y = y.split()
+
+#     tracker = defaultdict(dict)
+
+#     # Create empty score matrix of zeros and initialize first row and column
+#     x_dim, y_dim = len(x) + 1, len(y) + 1
+#     D = np.zeros((x_dim, y_dim), dtype=float)
+#     D[0, :] = np.arange(y_dim)
+#     D[:, 0] = np.arange(x_dim)
+
+#     # Create backtrace matrix and operation combination map and initialize first row and column
+#     # Each operation combination is dynamically assigned a unique integer
+#     B = np.zeros((x_dim, y_dim), dtype=int)
+#     B[0, 0] = OP_TYPE_COMBO_MAP_INV_M[(OpType.MATCH,)]  # start tokens always match
+#     B[0, 1:] = OP_TYPE_COMBO_MAP_INV_M[(OpType.INSERT,)]  # implies horisontal step
+#     B[1:, 0] = OP_TYPE_COMBO_MAP_INV_M[(OpType.DELETE,)]  # implies vertical step
+
+#     # Fill in the score and backtrace matrix
+#     for j in range(1, y_dim):
+#         for i in range(1, x_dim):
+
+#             # Identify diagonal cost: Substitution or match
+#             if x[i - 1] == y[j - 1]:
+#                 diag_cost = 0
+#                 diag_type = OpTypeM.MATCH
+#             else:
+#                 diag_cost = Levenshtein.normalized_distance(x[i - 1], y[j - 1])
+#                 diag_type = OpTypeM.SUBSTITUTE
+
+#             # Compute the new value
+#             del_val = D[i - 1, j] + 1
+#             # merge_del_val = D[i - 1, j - 1] + diag_cost
+#             ins_val = D[i, j - 1] + 1
+#             diag_val = D[i - 1, j - 1] + diag_cost
+#             new_val = min(del_val, ins_val, diag_val)
+#             D[i, j] = new_val
+
+#             # Track possible operations (note that the order of operations matters)
+#             pos_ops = tuple()
+#             if diag_val == new_val:
+#                 pos_ops += (diag_type,)
+#                 if diag_type == OpTypeM.SUBSTITUTE:
+#                     assert (i, j) not in tracker
+#                     tracker[i, j] = merge_state(x[i - 1], y[j - 1], diag_cost)
+#             if ins_val == new_val:
+#                 pos_ops += (OpTypeM.INSERT,)
+#             if del_val == new_val:
+#                 pos_ops += (OpTypeM.DELETE,)
+#             B[i, j] = OP_TYPE_COMBO_MAP_INV[pos_ops]
+
+#     return D, B
+
+
 def visualize_distance_matrix(hyp, ref):
     """
     Visualize the edit distance matrix between two sequences x (hyp) and y (ref).
@@ -131,10 +216,10 @@ def levenshtein_score_matrix_scored(x, y, backtrace=False):
         np.ndarray: The score matrix.
         np.ndarray: The backtrace matrix, if backtrace=True.
     """
-    
+
     # If greater than 1, boundry substitution cost to will be greater (i.e., making it prefer delete/insert, which is more likely to occur)
     score_ratio = max(len(x), len(y)) / min(len(x), len(y))
-    
+
     # Create empty score matrix of zeros and initialize first row and column
     x_dim, y_dim = len(x) + 1, len(y) + 1
     D = np.zeros((x_dim, y_dim), dtype=float)
@@ -160,7 +245,9 @@ def levenshtein_score_matrix_scored(x, y, backtrace=False):
                 x_i, x_j = (int(m.group()) for m in re.finditer(r"(?<=\().*?(?=\))", x[i - 1]))
                 y_i, y_j = (int(m.group()) for m in re.finditer(r"(?<=\().*?(?=\))", y[j - 1]))
                 diag_cost = min((abs(x_i - y_i), abs(x_j - y_j)))
-            elif x[i - 1].startswith("<") or y[j - 1].startswith("<") or x[i - 1].endswith(">") or y[j - 1].endswith(">"):
+            elif (
+                x[i - 1].startswith("<") or y[j - 1].startswith("<") or x[i - 1].endswith(">") or y[j - 1].endswith(">")
+            ):
                 diag_cost = 100
             else:
                 diag_cost = 1
@@ -358,6 +445,291 @@ def get_all_edit_ops(B, hyp, ref):
         paths = new_paths
 
     return [path[1:][::-1] for path in paths]
+
+
+class Path:
+    
+    def __init__(self, start_node):
+        """
+        Initialize a new path with a starting node.
+        """
+        self.merge_hyp = ""
+        self.merge_ref = ""
+        self.merging = False
+        self.merge_score = 0
+        self.merge_edits = 0
+        self.merge_spans = []
+        
+        self.nodes = [start_node]
+        self.ops = []
+        self.path_score = 0
+        
+    def _resolve_merge_diff(self, node, op_type):
+        """
+        Resolve the difference in the merging state of the path when a new node is added.
+        """
+        if op_type != OpType.INSERT:
+            self.merge_hyp += node.hyp_token  # TODO: Consider adding whitespace before new token.
+        if op_type != OpType.DELETE:
+            self.merge_ref += node.ref_token  # TODO: Consider adding whitespace before new token.
+        new_edits = Levenshtein.distance(self.merge_hyp, self.merge_ref)
+        diff = new_edits - self.merge_edits
+        self.merge_edits = new_edits
+        return diff
+    
+    def _reset_merge_state(self, node, op_type):
+        """
+        Reset the merging state of the path.
+        """
+        # TODO: Consider if len == 1 merge spans (i.e., single substitution) should be kept or removed.
+        if self.merge_spans and len(self.merge_spans[-1]) < 2:
+            self.merge_spans.pop()
+        if op_type == OpType.SUBSTITUTE:
+            self.merging = True
+            self.merge_hyp = node.hyp_token
+            self.merge_ref = node.ref_token
+            self.merge_edits = Levenshtein.distance(self.merge_hyp, self.merge_ref)
+            self.merge_score = self.merge_edits / len(self.merge_ref)
+            if not node.is_end:
+                self.merge_spans.append([node])
+        elif self.merging:
+            self.merging = False
+            self.merge_hyp = ""
+            self.merge_ref = ""
+            self.merge_edits = 0
+            self.merge_score = 0
+            
+    def expand(self, node, op_type):
+        """
+        Expand the path by adding a new node and updating the merging state.
+        """
+        new_path = deepcopy(self)
+        new_path.nodes.append(node)
+        new_path.ops.append(op_type)
+        
+        if op_type == OpType.MATCH:
+            new_path._reset_merge_state(node, op_type)
+            return new_path
+        
+        if new_path.merging:
+            diff = new_path._resolve_merge_diff(node, op_type)
+            if diff < 0:
+                new_path.merge_spans[-1].append(node)
+                new_path.path_score -= self.merge_score
+                new_path.merge_score = new_path.merge_edits / len(new_path.merge_ref)
+                new_path.path_score += new_path.merge_score
+                return new_path
+
+        new_path._reset_merge_state(node, op_type)
+        new_path.path_score += (new_path.merge_score if op_type == OpType.SUBSTITUTE else 1)        
+        return new_path
+
+    @property
+    def id(self):
+        return hash((self.merge_hyp, self.merge_ref, self.nodes[-1].index))
+
+
+class Node:
+    def __init__(self, hyp_index, ref_index, hyp_token, ref_token, is_end=False):
+        self.index = (hyp_index, ref_index)
+        self.hyp_token = None if self.index == (0, 0) else hyp_token
+        self.ref_token = None if self.index == (0, 0) else ref_token
+
+        self.is_start = True if self.index == (0, 0) else False
+        self.is_end = is_end
+
+        self.children = {}
+        self.parents = {}
+    
+    def __repr__(self):
+        return f"Node(hyp_index={self.index[0]}, ref_index={self.index[1]}, hyp_token={self.hyp_token}, ref_token={self.ref_token}, is_start={self.is_start}, is_end={self.is_end})"
+
+class MergeNode:
+    
+    def __init__(self, node):
+        """
+        Initialize a new merge node with the given node.
+        """
+        self.nodes = [node]
+
+    def add_node(self, node):
+        """
+        Add a new node to the merge node.
+        """
+        if node not in self.nodes:
+            self.nodes.append(node)
+    
+    @property
+    def index(self):
+        return self.nodes[-1].index
+    
+    @property
+    def hyp_token(self):
+        return self.nodes[-1].hyp_token
+    
+    @property
+    def ref_token(self):
+        return self.nodes[-1].ref_token
+    
+    @property
+    def is_start(self):
+        return self.nodes[-1].is_start
+    
+    @property
+    def is_end(self):
+        return self.nodes[-1].is_end
+    
+    @property
+    def children(self):
+        return self.nodes[-1].children
+    
+    @property
+    def parents(self):
+        return self.nodes[-1].parents
+    
+
+
+def get_backtrace_graph(B, hyp, ref):
+    
+    hyp_ = ">" + hyp if isinstance(hyp, str) else ["<"] + hyp
+    ref_ = ">" + ref if isinstance(ref, str) else ["<"] + ref
+
+    end_node = Node(
+        hyp_index=len(hyp_) - 1,
+        ref_index=len(ref_) - 1,
+        hyp_token=hyp_[-1] if len(hyp) > 0 else None,
+        ref_token=ref_[-1] if len(ref) > 0 else None,
+        is_end=True,
+    )
+    nodes = {end_node.index: end_node}
+    current_nodes = [end_node]
+
+    while len(current_nodes) > 0:
+        next_nodes = []
+
+        for node in current_nodes:
+            op_types_value = B[node.index]
+            op_types = OP_TYPE_COMBO_MAP[op_types_value]
+            i, j = node.index
+            
+            for op_type in op_types:
+                i_ = i - 1 if op_type is not OpType.INSERT else i
+                j_ = j - 1 if op_type is not OpType.DELETE else j
+                
+                parent_index = (i_, j_)
+                if parent_index in nodes:
+                    parent_node = nodes[parent_index]
+                else:
+                    parent_node = Node(
+                        hyp_index=i_,
+                        ref_index=j_,
+                        hyp_token=hyp_[i_],
+                        ref_token=ref_[j_],
+                    )
+                    nodes[parent_index] = parent_node
+                
+                node.parents[op_type] = parent_node
+                parent_node.children[op_type] = node
+                
+                if not parent_node.is_start:
+                    next_nodes.append(parent_node)
+        
+        current_nodes = next_nodes
+                
+    return nodes
+
+def sample_backtrace_graph(nodes):
+    
+    start_index = (0, 0)
+    node = nodes[start_index]
+    sample = [(None, node)]
+    while not node.is_end:
+        edge = random.choice(list(node.children.keys()))
+        node = node.children[edge]
+        sample.append((edge, node))
+    
+    return sample
+
+def merge_align(nodes, beam_size=100):
+    
+    # ISSUE #1
+    # - TODO: How to deal with ties, that occur when e.g. a single is repeated (i.e., M-D or D-M). Will have same ID.
+    # If ignored, the algoritm won't fint all best paths, but will still find a single best path.
+    
+    # TODO: Implement a merge method on the Node object.
+    
+    assert (0, 0) in nodes, "Start node (0, 0) must be present in the nodes."
+    assert len([node for node in nodes.values() if node.is_end]) == 1, "Exactly one end node must be present in the nodes."
+    
+    # Initialize the beam with the start path.
+    start_node = nodes[(0, 0)]
+    start_path = Path(start_node)
+    cur_beam = {start_path.id: start_path}
+    
+    # Iterate until all paths in the beam reach the end node.
+    while True:
+        next_beam = {}
+        for path in cur_beam.values():
+            
+            # If the current path is at the end node, add it to the next beam.
+            if path.nodes[-1].is_end and (path.id not in next_beam or next_beam[path.id].path_score > path.path_score):
+                next_beam[path.id] = path
+                continue
+            
+            # Expand the current path by all possible operations from the last node.
+            for op_type, node in path.nodes[-1].children.items():
+                new_path = path.expand(node, op_type)
+                if new_path.id not in next_beam or next_beam[new_path.id].path_score > new_path.path_score:
+                    next_beam[new_path.id] = new_path
+
+        # If all paths are at the end node, terminate the search.
+        cur_beam = next_beam
+        if all([p.nodes[-1].is_end for p in cur_beam.values()]):
+            break
+    
+        # Sort the paths by score and return the top beam_size paths  .      
+        sorted_paths = sorted(cur_beam.values(), key=lambda p: p.path_score)
+        cur_beam = {p.id: p for p in sorted_paths[:beam_size]}
+    
+    # Return the best path
+    best_path = min(next_beam.values(), key=lambda p: p.path_score)
+    return best_path, next_beam
+
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+
+
+
+
+
 
 
 def count_consecutive(B, hyp, ref):

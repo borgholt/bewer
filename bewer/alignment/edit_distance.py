@@ -35,8 +35,6 @@ OP_TYPE_COMBO_MAP_INV = {v: k for k, v in OP_TYPE_COMBO_MAP.items()}
 class OpTypeMerge(IntEnum):
     MERGE = 4
 
-import IPython; IPython.embed(using=False, banner1="Edit distance module loaded. You can now use the functions and classes defined here.")
-
 
 def levenshtein_score_matrix(x, y, backtrace=False):
     """
@@ -52,6 +50,72 @@ def levenshtein_score_matrix(x, y, backtrace=False):
         np.ndarray: The backtrace matrix, if backtrace=True.
     """
 
+    # Create empty score matrix of zeros and initialize first row and column
+    x_dim, y_dim = len(x) + 1, len(y) + 1
+    D = np.zeros((x_dim, y_dim), dtype=int)
+    D[0, :] = np.arange(y_dim)
+    D[:, 0] = np.arange(x_dim)
+
+    # Create backtrace matrix and operation combination map and initialize first row and column
+    # Each operation combination is dynamically assigned a unique integer
+    if backtrace:
+        B = np.zeros((x_dim, y_dim), dtype=int)
+        B[0, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.MATCH,)]  # start tokens always match
+        B[0, 1:] = OP_TYPE_COMBO_MAP_INV[(OpType.INSERT,)]  # implies horisontal step
+        B[1:, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.DELETE,)]  # implies vertical step
+
+    # Fill in the score and backtrace matrix
+    for j in range(1, y_dim):
+        for i in range(1, x_dim):
+
+            # Identify diagonal cost: Substitution or match
+            if x[i - 1] == y[j - 1]:
+                diag_cost = 0
+            else:
+                diag_cost = 1
+
+            # Compute the new value
+            del_val = D[i - 1, j] + 1
+            ins_val = D[i, j - 1] + 1
+            diag_val = D[i - 1, j - 1] + diag_cost
+            new_val = min(del_val, ins_val, diag_val)
+            D[i, j] = new_val
+
+            # Track possible operations (note that the order of operations matters)
+            if backtrace:
+                pos_ops = tuple()
+                if diag_val == new_val and diag_cost == 0:
+                    pos_ops += (OpType.MATCH,)
+                if ins_val == new_val:
+                    pos_ops += (OpType.INSERT,)
+                if del_val == new_val:
+                    pos_ops += (OpType.DELETE,)
+                if diag_val == new_val and diag_cost == 1:
+                    pos_ops += (OpType.SUBSTITUTE,)
+                B[i, j] = OP_TYPE_COMBO_MAP_INV[pos_ops]
+
+    if backtrace:
+        return D, B
+    else:
+        return D
+
+
+def levenshtein_score_matrix_merge_align(x, y, backtrace=False):
+    """
+    Compute the edit distance score matrix between two sequences x (hyp) and y (ref).
+
+    Args:
+        x (str): The source/hypothesis sequence.
+        y (str): The target/reference sequence.
+        backtrace (bool): Whether to compute the backtrace matrix.
+
+    Returns:
+        np.ndarray: The score matrix.
+        np.ndarray: The backtrace matrix, if backtrace=True.
+    """
+
+    
+    
     # Create empty score matrix of zeros and initialize first row and column
     x_dim, y_dim = len(x) + 1, len(y) + 1
     D = np.zeros((x_dim, y_dim), dtype=int)
@@ -203,151 +267,151 @@ def visualize_distance_matrix(hyp, ref):
         print(row_name + values)
 
 
-def levenshtein_score_matrix_scored(x, y, backtrace=False):
-    """
-    Compute the edit distance score matrix between two sequences x (hyp) and y (ref).
+# def levenshtein_score_matrix_scored(x, y, backtrace=False):
+#     """
+#     Compute the edit distance score matrix between two sequences x (hyp) and y (ref).
 
-    Args:
-        x (str): The source/hypothesis sequence.
-        y (str): The target/reference sequence.
-        backtrace (bool): Whether to compute the backtrace matrix.
+#     Args:
+#         x (str): The source/hypothesis sequence.
+#         y (str): The target/reference sequence.
+#         backtrace (bool): Whether to compute the backtrace matrix.
 
-    Returns:
-        np.ndarray: The score matrix.
-        np.ndarray: The backtrace matrix, if backtrace=True.
-    """
+#     Returns:
+#         np.ndarray: The score matrix.
+#         np.ndarray: The backtrace matrix, if backtrace=True.
+#     """
 
-    # If greater than 1, boundry substitution cost to will be greater (i.e., making it prefer delete/insert, which is more likely to occur)
-    score_ratio = max(len(x), len(y)) / min(len(x), len(y))
+#     # If greater than 1, boundry substitution cost to will be greater (i.e., making it prefer delete/insert, which is more likely to occur)
+#     score_ratio = max(len(x), len(y)) / min(len(x), len(y))
 
-    # Create empty score matrix of zeros and initialize first row and column
-    x_dim, y_dim = len(x) + 1, len(y) + 1
-    D = np.zeros((x_dim, y_dim), dtype=float)
-    D[0, :] = np.arange(y_dim)
-    D[:, 0] = np.arange(x_dim)
+#     # Create empty score matrix of zeros and initialize first row and column
+#     x_dim, y_dim = len(x) + 1, len(y) + 1
+#     D = np.zeros((x_dim, y_dim), dtype=float)
+#     D[0, :] = np.arange(y_dim)
+#     D[:, 0] = np.arange(x_dim)
 
-    # Create backtrace matrix and operation combination map and initialize first row and column
-    # Each operation combination is dynamically assigned a unique integer
-    if backtrace:
-        B = np.zeros((x_dim, y_dim), dtype=int)
-        B[0, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.MATCH,)]  # start tokens always match
-        B[0, 1:] = OP_TYPE_COMBO_MAP_INV[(OpType.INSERT,)]  # implies horisontal step
-        B[1:, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.DELETE,)]  # implies vertical step
+#     # Create backtrace matrix and operation combination map and initialize first row and column
+#     # Each operation combination is dynamically assigned a unique integer
+#     if backtrace:
+#         B = np.zeros((x_dim, y_dim), dtype=int)
+#         B[0, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.MATCH,)]  # start tokens always match
+#         B[0, 1:] = OP_TYPE_COMBO_MAP_INV[(OpType.INSERT,)]  # implies horisontal step
+#         B[1:, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.DELETE,)]  # implies vertical step
 
-    # Fill in the score and backtrace matrix
-    for j in range(1, y_dim):
-        for i in range(1, x_dim):
+#     # Fill in the score and backtrace matrix
+#     for j in range(1, y_dim):
+#         for i in range(1, x_dim):
 
-            # Identify diagonal cost: Substitution or match
-            if x[i - 1] == y[j - 1]:
-                diag_cost = 0
-            elif (x[i - 1][0] == y[j - 1][0] == "<") or (x[i - 1][-1] == y[j - 1][-1] == ">"):
-                x_i, x_j = (int(m.group()) for m in re.finditer(r"(?<=\().*?(?=\))", x[i - 1]))
-                y_i, y_j = (int(m.group()) for m in re.finditer(r"(?<=\().*?(?=\))", y[j - 1]))
-                diag_cost = min((abs(x_i - y_i), abs(x_j - y_j)))
-            elif (
-                x[i - 1].startswith("<") or y[j - 1].startswith("<") or x[i - 1].endswith(">") or y[j - 1].endswith(">")
-            ):
-                diag_cost = 100
-            else:
-                diag_cost = 1
+#             # Identify diagonal cost: Substitution or match
+#             if x[i - 1] == y[j - 1]:
+#                 diag_cost = 0
+#             elif (x[i - 1][0] == y[j - 1][0] == "<") or (x[i - 1][-1] == y[j - 1][-1] == ">"):
+#                 x_i, x_j = (int(m.group()) for m in re.finditer(r"(?<=\().*?(?=\))", x[i - 1]))
+#                 y_i, y_j = (int(m.group()) for m in re.finditer(r"(?<=\().*?(?=\))", y[j - 1]))
+#                 diag_cost = min((abs(x_i - y_i), abs(x_j - y_j)))
+#             elif (
+#                 x[i - 1].startswith("<") or y[j - 1].startswith("<") or x[i - 1].endswith(">") or y[j - 1].endswith(">")
+#             ):
+#                 diag_cost = 100
+#             else:
+#                 diag_cost = 1
 
-            # Compute the new value
-            del_val = D[i - 1, j] + 1
-            ins_val = D[i, j - 1] + 1
-            diag_val = D[i - 1, j - 1] + diag_cost
-            new_val = min(del_val, ins_val, diag_val)
-            D[i, j] = new_val
+#             # Compute the new value
+#             del_val = D[i - 1, j] + 1
+#             ins_val = D[i, j - 1] + 1
+#             diag_val = D[i - 1, j - 1] + diag_cost
+#             new_val = min(del_val, ins_val, diag_val)
+#             D[i, j] = new_val
 
-            # Track possible operations (note that the order of operations matters)
-            if backtrace:
-                pos_ops = tuple()
-                if diag_val == new_val and diag_cost == 0:
-                    pos_ops += (OpType.MATCH,)
-                if ins_val == new_val:
-                    pos_ops += (OpType.INSERT,)
-                if del_val == new_val:
-                    pos_ops += (OpType.DELETE,)
-                if diag_val == new_val and diag_cost > 0:
-                    pos_ops += (OpType.SUBSTITUTE,)
-                B[i, j] = OP_TYPE_COMBO_MAP_INV[pos_ops]
+#             # Track possible operations (note that the order of operations matters)
+#             if backtrace:
+#                 pos_ops = tuple()
+#                 if diag_val == new_val and diag_cost == 0:
+#                     pos_ops += (OpType.MATCH,)
+#                 if ins_val == new_val:
+#                     pos_ops += (OpType.INSERT,)
+#                 if del_val == new_val:
+#                     pos_ops += (OpType.DELETE,)
+#                 if diag_val == new_val and diag_cost > 0:
+#                     pos_ops += (OpType.SUBSTITUTE,)
+#                 B[i, j] = OP_TYPE_COMBO_MAP_INV[pos_ops]
 
-    if backtrace:
-        return D, B
-    else:
-        return D
+#     if backtrace:
+#         return D, B
+#     else:
+#         return D
 
 
-def levenshtein_score_matrix_with_consistency_counts(x, y, backtrace=True):
-    """
-    Compute the edit distance score matrix between two sequences x (hyp) and y (ref).
+# def levenshtein_score_matrix_with_consistency_counts(x, y, backtrace=True):
+#     """
+#     Compute the edit distance score matrix between two sequences x (hyp) and y (ref).
 
-    Args:
-        x (str): The source/hypothesis sequence.
-        y (str): The target/reference sequence.
-        backtrace (bool): Whether to compute the backtrace matrix.
+#     Args:
+#         x (str): The source/hypothesis sequence.
+#         y (str): The target/reference sequence.
+#         backtrace (bool): Whether to compute the backtrace matrix.
 
-    Returns:
-        np.ndarray: The score matrix.
-        np.ndarray: The backtrace matrix, if backtrace=True.
-    """
+#     Returns:
+#         np.ndarray: The score matrix.
+#         np.ndarray: The backtrace matrix, if backtrace=True.
+#     """
 
-    # Create empty score matrix of zeros and initialize first row and column
-    x_dim, y_dim = len(x) + 1, len(y) + 1
-    D = np.zeros((x_dim, y_dim), dtype=int)
-    D[0, :] = np.arange(y_dim, dtype=int)
-    D[:, 0] = np.arange(x_dim, dtype=int)
+#     # Create empty score matrix of zeros and initialize first row and column
+#     x_dim, y_dim = len(x) + 1, len(y) + 1
+#     D = np.zeros((x_dim, y_dim), dtype=int)
+#     D[0, :] = np.arange(y_dim, dtype=int)
+#     D[:, 0] = np.arange(x_dim, dtype=int)
 
-    # Create backtrace matrix and operation combination map and initialize first row and column
-    # Each operation combination is dynamically assigned a unique integer
-    B = np.zeros((x_dim, y_dim), dtype=int)
-    B[0, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.MATCH,)]  # start tokens always match
-    B[0, 1:] = OP_TYPE_COMBO_MAP_INV[(OpType.INSERT,)]  # implies horisontal step
-    B[1:, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.DELETE,)]  # implies vertical step
+#     # Create backtrace matrix and operation combination map and initialize first row and column
+#     # Each operation combination is dynamically assigned a unique integer
+#     B = np.zeros((x_dim, y_dim), dtype=int)
+#     B[0, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.MATCH,)]  # start tokens always match
+#     B[0, 1:] = OP_TYPE_COMBO_MAP_INV[(OpType.INSERT,)]  # implies horisontal step
+#     B[1:, 0] = OP_TYPE_COMBO_MAP_INV[(OpType.DELETE,)]  # implies vertical step
 
-    # Create consistency count matrix
-    C = np.zeros((x_dim, y_dim), dtype=int)
-    C[0, :] = np.cumsum(np.arange(y_dim, dtype=int))
-    C[:, 0] = np.cumsum(np.arange(x_dim, dtype=int))
+#     # Create consistency count matrix
+#     C = np.zeros((x_dim, y_dim), dtype=int)
+#     C[0, :] = np.cumsum(np.arange(y_dim, dtype=int))
+#     C[:, 0] = np.cumsum(np.arange(x_dim, dtype=int))
 
-    # Create consistency count matrix for individual operations
-    C_op = np.zeros((3, x_dim, y_dim), dtype=int)
-    C_op[1, 0, :] = np.cumsum(np.arange(y_dim, dtype=int))  # Insertions
-    C_op[2, :, 0] = np.cumsum(np.arange(x_dim, dtype=int))  # Deletions
+#     # Create consistency count matrix for individual operations
+#     C_op = np.zeros((3, x_dim, y_dim), dtype=int)
+#     C_op[1, 0, :] = np.cumsum(np.arange(y_dim, dtype=int))  # Insertions
+#     C_op[2, :, 0] = np.cumsum(np.arange(x_dim, dtype=int))  # Deletions
 
-    # Fill in the score and backtrace matrix
-    for j in range(1, y_dim):
-        for i in range(1, x_dim):
+#     # Fill in the score and backtrace matrix
+#     for j in range(1, y_dim):
+#         for i in range(1, x_dim):
 
-            # Identify diagonal cost: Substitution or match
-            if x[i - 1] == y[j - 1]:
-                diag_cost = 0
-            else:
-                diag_cost = 1
+#             # Identify diagonal cost: Substitution or match
+#             if x[i - 1] == y[j - 1]:
+#                 diag_cost = 0
+#             else:
+#                 diag_cost = 1
 
-            # Compute the new value
-            del_val = D[i - 1, j] + 1
-            ins_val = D[i, j - 1] + 1
-            diag_val = D[i - 1, j - 1] + diag_cost
-            new_val = min(del_val, ins_val, diag_val)
-            D[i, j] = new_val
+#             # Compute the new value
+#             del_val = D[i - 1, j] + 1
+#             ins_val = D[i, j - 1] + 1
+#             diag_val = D[i - 1, j - 1] + diag_cost
+#             new_val = min(del_val, ins_val, diag_val)
+#             D[i, j] = new_val
 
-            # Track possible operations (note that the order of operations matters)
-            pos_ops = tuple()
-            if diag_val == new_val and diag_cost == 0:
-                pos_ops += (OpType.MATCH,)
-                C_op[0, i, j] = (C_op[0, i - 1, j - 1] * 2) + 1
-            if ins_val == new_val:
-                pos_ops += (OpType.INSERT,)
-                C_op[1, i, j] = (C_op[1, i, j - 1] * 2) + 1
-            if del_val == new_val:
-                pos_ops += (OpType.DELETE,)
-                C_op[2, i, j] = (C_op[2, i - 1, j] * 2) + 1
-            if diag_val == new_val and diag_cost == 1:
-                pos_ops += (OpType.SUBSTITUTE,)
-            B[i, j] = OP_TYPE_COMBO_MAP_INV[pos_ops]
+#             # Track possible operations (note that the order of operations matters)
+#             pos_ops = tuple()
+#             if diag_val == new_val and diag_cost == 0:
+#                 pos_ops += (OpType.MATCH,)
+#                 C_op[0, i, j] = (C_op[0, i - 1, j - 1] * 2) + 1
+#             if ins_val == new_val:
+#                 pos_ops += (OpType.INSERT,)
+#                 C_op[1, i, j] = (C_op[1, i, j - 1] * 2) + 1
+#             if del_val == new_val:
+#                 pos_ops += (OpType.DELETE,)
+#                 C_op[2, i, j] = (C_op[2, i - 1, j] * 2) + 1
+#             if diag_val == new_val and diag_cost == 1:
+#                 pos_ops += (OpType.SUBSTITUTE,)
+#             B[i, j] = OP_TYPE_COMBO_MAP_INV[pos_ops]
 
-    return D, B
+#     return D, B
 
 
 def get_greedy_edit_ops(B, hyp, ref, sample=False):
@@ -448,82 +512,170 @@ def get_all_edit_ops(B, hyp, ref):
 
 
 class Path:
-    
+
     def __init__(self, start_node):
         """
         Initialize a new path with a starting node.
         """
         self.merge_hyp = ""
         self.merge_ref = ""
-        self.merging = False
         self.merge_score = 0
         self.merge_edits = 0
-        self.merge_spans = []
-        
+
         self.nodes = [start_node]
         self.ops = []
         self.path_score = 0
+    
+    @classmethod
+    def from_other(cls, path):
+        """
+        Create a new path from an existing path.
+        """
+        new_path = cls(path.nodes[0])
         
-    def _resolve_merge_diff(self, node, op_type):
+        new_path.merge_hyp = path.merge_hyp
+        new_path.merge_ref = path.merge_ref
+        new_path.merge_score = path.merge_score
+        new_path.merge_edits = path.merge_edits
+        
+        new_path.nodes = list(path.nodes)
+        if len(new_path.nodes) > 0 and isinstance(new_path.nodes[-1], MergeNode):
+            new_path.nodes[-1] = MergeNode.from_other(new_path.nodes[-1])
+        new_path.ops = list(path.ops)
+        new_path.path_score = path.path_score
+        
+        return new_path
+
+    @property
+    def can_merge(self):
+        return isinstance(self.nodes[-1], MergeNode)
+
+    def _resolve_merge(self, node, op_type):
         """
         Resolve the difference in the merging state of the path when a new node is added.
         """
+        # Compute additional edits if not merged:
+        if op_type == OpType.INSERT:
+            no_merge_edits = len(node.ref_token)
+        elif op_type == OpType.DELETE:
+            no_merge_edits = len(node.hyp_token)
+        elif op_type == OpType.SUBSTITUTE:
+            no_merge_edits = Levenshtein.distance(node.hyp_token, node.ref_token)
+        else:
+            raise ValueError(f"Invalid operation type for merging: {op_type}")
+        
+        # Update the merged reference and hypothesis tokens based on the operation type.
         if op_type != OpType.INSERT:
             self.merge_hyp += node.hyp_token  # TODO: Consider adding whitespace before new token.
         if op_type != OpType.DELETE:
             self.merge_ref += node.ref_token  # TODO: Consider adding whitespace before new token.
+        
+        # Compute additional edits if merged:
         new_edits = Levenshtein.distance(self.merge_hyp, self.merge_ref)
-        diff = new_edits - self.merge_edits
-        self.merge_edits = new_edits
-        return diff
-    
-    def _reset_merge_state(self, node, op_type):
+        merge_edits = new_edits - self.merge_edits
+        new_merge_score = (new_edits / len(self.merge_ref)) + (len(self.nodes[-1].nodes) + 1)
+        
+        # if self.merge_ref == "rotatorcuffmanchet":
+        #     import IPython; IPython.embed(using=False, header="rotator cuff manchet")
+
+        # If the new edits are less than the edits without merging, update the merging state.
+        if merge_edits < no_merge_edits and new_merge_score < (self.merge_score + 1): # if merge_edits < 0:
+            self.merge_edits = new_edits
+            self.nodes[-1].add_node(node, op_type)
+            self.path_score -= self.merge_score
+            self.merge_score = new_merge_score
+            self.path_score += self.merge_score
+            return True
+        
+        # # Compute additional edits if not merged:
+        # if op_type == OpType.INSERT:
+        #     no_merge_edits = len(node.ref_token)
+        # elif op_type == OpType.DELETE:
+        #     no_merge_edits = len(node.hyp_token)
+        # elif op_type == OpType.SUBSTITUTE:
+        #     no_merge_edits = Levenshtein.distance(node.hyp_token, node.ref_token)
+        # else:
+        #     raise ValueError(f"Invalid operation type for merging: {op_type}")
+        
+        # # Update the merged reference and hypothesis tokens based on the operation type.
+        # if op_type != OpType.INSERT:
+        #     self.merge_hyp += node.hyp_token  # TODO: Consider adding whitespace before new token.
+        # if op_type != OpType.DELETE:
+        #     self.merge_ref += node.ref_token  # TODO: Consider adding whitespace before new token.
+        
+        # # Compute additional edits if merged:
+        # new_edits = Levenshtein.distance(self.merge_hyp, self.merge_ref)
+        # merge_edits = new_edits - self.merge_edits
+        
+        # # if self.merge_ref == "rotatorcuffmanchet":
+        # #     import IPython; IPython.embed(using=False, header="rotator cuff manchet")
+
+        # # If the new edits are less than the edits without merging, update the merging state.
+        # if merge_edits < no_merge_edits: # if merge_edits < 0:
+        #     self.merge_edits = new_edits
+        #     self.nodes[-1].add_node(node, op_type)
+        #     self.path_score -= self.merge_score
+        #     self.merge_score = self.merge_edits / len(self.merge_ref)
+        #     self.path_score += self.merge_score
+        #     return True
+        
+        return False
+
+    def _reset_and_update(self, node, op_type):
         """
         Reset the merging state of the path.
         """
-        # TODO: Consider if len == 1 merge spans (i.e., single substitution) should be kept or removed.
-        if self.merge_spans and len(self.merge_spans[-1]) < 2:
-            self.merge_spans.pop()
+        # # TODO: Consider if len == 1 merge spans (i.e., single substitution) should be kept or removed.
+        # if self.merge_spans and len(self.merge_spans[-1]) < 2:
+        #     self.merge_spans.pop()
         if op_type == OpType.SUBSTITUTE:
-            self.merging = True
             self.merge_hyp = node.hyp_token
             self.merge_ref = node.ref_token
-            self.merge_edits = Levenshtein.distance(self.merge_hyp, self.merge_ref)
-            self.merge_score = self.merge_edits / len(self.merge_ref)
-            if not node.is_end:
-                self.merge_spans.append([node])
-        elif self.merging:
-            self.merging = False
+            self.merge_edits = Levenshtein.distance(self.merge_hyp, self.merge_ref) 
+            self.merge_score = 1 + (self.merge_edits / len(self.merge_ref))
+            self.path_score += self.merge_score
+            self.nodes.append(MergeNode(node))
+            self.ops.append(OpTypeMerge.MERGE)
+        else:
             self.merge_hyp = ""
             self.merge_ref = ""
             self.merge_edits = 0
             self.merge_score = 0
-            
+            self.path_score += 1 if op_type != OpType.MATCH else 0
+            self.nodes.append(node)
+            self.ops.append(op_type)
+
     def expand(self, node, op_type):
         """
         Expand the path by adding a new node and updating the merging state.
         """
-        new_path = deepcopy(self)
-        new_path.nodes.append(node)
-        new_path.ops.append(op_type)
+        # new_path = deepcopy(self)
+        new_path = Path.from_other(self)
         
-        if op_type == OpType.MATCH:
-            new_path._reset_merge_state(node, op_type)
-            return new_path
-        
-        if new_path.merging:
-            diff = new_path._resolve_merge_diff(node, op_type)
-            if diff < 0:
-                new_path.merge_spans[-1].append(node)
-                new_path.path_score -= self.merge_score
-                new_path.merge_score = new_path.merge_edits / len(new_path.merge_ref)
-                new_path.path_score += new_path.merge_score
+        if new_path.can_merge and op_type != OpType.MATCH:
+            if new_path._resolve_merge(node, op_type):
                 return new_path
 
-        new_path._reset_merge_state(node, op_type)
-        new_path.path_score += (new_path.merge_score if op_type == OpType.SUBSTITUTE else 1)        
+        new_path._reset_and_update(node, op_type)
         return new_path
 
+    def alignment(self):
+        """
+        Get the alignment of the path as a string.
+        """
+        for op, node in zip(self.ops, self.nodes):
+            if op == OpType.MATCH:
+                print(f"Match: {node.ref_token}")
+            elif op == OpType.INSERT:
+                print(f"Insert: {node.ref_token}")
+            elif op == OpType.DELETE:
+                print(f"Delete: {node.hyp_token}")
+            elif op == OpTypeMerge.MERGE:
+                if len(node.nodes) > 1:
+                    print(f"Merge: {node.ref_tokens} -> {node.hyp_tokens} (num nodes: {len(node.nodes)})")
+                else:
+                    print(f"Substitute: {node.ref_token} -> {node.hyp_token}")
+    
     @property
     def id(self):
         return hash((self.merge_hyp, self.merge_ref, self.nodes[-1].index))
@@ -540,59 +692,80 @@ class Node:
 
         self.children = {}
         self.parents = {}
-    
+
     def __repr__(self):
         return f"Node(hyp_index={self.index[0]}, ref_index={self.index[1]}, hyp_token={self.hyp_token}, ref_token={self.ref_token}, is_start={self.is_start}, is_end={self.is_end})"
 
+
 class MergeNode:
-    
+
     def __init__(self, node):
         """
-        Initialize a new merge node with the given node.
+        Initialize a new merge node with the given node arrived at via substitution.
         """
         self.nodes = [node]
+        self.ops = [OpType.SUBSTITUTE]
+        self.ref_tokens = node.ref_token
+        self.hyp_tokens = node.hyp_token
+    
+    @classmethod
+    def from_other(cls, merge_node):
+        """
+        Create a new merge node from an existing merge node.
+        """
+        new_merge_node = cls(merge_node.nodes[0])
+        new_merge_node.nodes = list(merge_node.nodes)
+        new_merge_node.ops = list(merge_node.ops)
+        new_merge_node.ref_tokens = merge_node.ref_tokens
+        new_merge_node.hyp_tokens = merge_node.hyp_tokens
+        return new_merge_node
+        
 
-    def add_node(self, node):
+    def add_node(self, node, op_type):
         """
         Add a new node to the merge node.
         """
-        if node not in self.nodes:
-            self.nodes.append(node)
+        self.nodes.append(node)
+        self.ops.append(op_type)
+        self.ref_tokens += f" {node.ref_token}" if op_type != OpType.DELETE else ""
+        self.hyp_tokens += f" {node.hyp_token}" if op_type != OpType.INSERT else ""
     
+    def __repr__(self):
+        return f"MergeNode([\n{',\n'.join(["  " + str(n) for n in self.nodes])}]\n)"
+
     @property
     def index(self):
         return self.nodes[-1].index
-    
+
     @property
     def hyp_token(self):
         return self.nodes[-1].hyp_token
-    
+
     @property
     def ref_token(self):
         return self.nodes[-1].ref_token
-    
+
     @property
     def is_start(self):
         return self.nodes[-1].is_start
-    
+
     @property
     def is_end(self):
         return self.nodes[-1].is_end
-    
+
     @property
     def children(self):
         return self.nodes[-1].children
-    
+
     @property
     def parents(self):
         return self.nodes[-1].parents
-    
 
 
 def get_backtrace_graph(B, hyp, ref):
-    
-    hyp_ = ">" + hyp if isinstance(hyp, str) else ["<"] + hyp
-    ref_ = ">" + ref if isinstance(ref, str) else ["<"] + ref
+
+    hyp_ = ">" + hyp if isinstance(hyp, str) else [">"] + hyp
+    ref_ = ">" + ref if isinstance(ref, str) else [">"] + ref
 
     end_node = Node(
         hyp_index=len(hyp_) - 1,
@@ -603,7 +776,7 @@ def get_backtrace_graph(B, hyp, ref):
     )
     nodes = {end_node.index: end_node}
     current_nodes = [end_node]
-
+    expanded_nodes = set()
     while len(current_nodes) > 0:
         next_nodes = []
 
@@ -611,11 +784,11 @@ def get_backtrace_graph(B, hyp, ref):
             op_types_value = B[node.index]
             op_types = OP_TYPE_COMBO_MAP[op_types_value]
             i, j = node.index
-            
+
             for op_type in op_types:
                 i_ = i - 1 if op_type is not OpType.INSERT else i
                 j_ = j - 1 if op_type is not OpType.DELETE else j
-                
+
                 parent_index = (i_, j_)
                 if parent_index in nodes:
                     parent_node = nodes[parent_index]
@@ -627,19 +800,21 @@ def get_backtrace_graph(B, hyp, ref):
                         ref_token=ref_[j_],
                     )
                     nodes[parent_index] = parent_node
-                
+
                 node.parents[op_type] = parent_node
                 parent_node.children[op_type] = node
-                
-                if not parent_node.is_start:
+
+                if not parent_node.is_start and parent_node.index not in expanded_nodes:
                     next_nodes.append(parent_node)
-        
+                    expanded_nodes.add(parent_node.index)
+
         current_nodes = next_nodes
-                
+        
     return nodes
 
+
 def sample_backtrace_graph(nodes):
-    
+
     start_index = (0, 0)
     node = nodes[start_index]
     sample = [(None, node)]
@@ -647,35 +822,41 @@ def sample_backtrace_graph(nodes):
         edge = random.choice(list(node.children.keys()))
         node = node.children[edge]
         sample.append((edge, node))
-    
+
     return sample
 
+
 def merge_align(nodes, beam_size=100):
-    
+
     # ISSUE #1
     # - TODO: How to deal with ties, that occur when e.g. a single is repeated (i.e., M-D or D-M). Will have same ID.
     # If ignored, the algoritm won't fint all best paths, but will still find a single best path.
-    
+
     # TODO: Implement a merge method on the Node object.
-    
+
     assert (0, 0) in nodes, "Start node (0, 0) must be present in the nodes."
-    assert len([node for node in nodes.values() if node.is_end]) == 1, "Exactly one end node must be present in the nodes."
-    
+    assert (
+        len([node for node in nodes.values() if node.is_end]) == 1
+    ), "Exactly one end node must be present in the nodes."
+
     # Initialize the beam with the start path.
     start_node = nodes[(0, 0)]
     start_path = Path(start_node)
     cur_beam = {start_path.id: start_path}
-    
+
     # Iterate until all paths in the beam reach the end node.
+    c = 0
     while True:
+        print(f"Current beam size: {len(cur_beam)} | Iteration: {c}")
+        c += 1
         next_beam = {}
         for path in cur_beam.values():
-            
+
             # If the current path is at the end node, add it to the next beam.
             if path.nodes[-1].is_end and (path.id not in next_beam or next_beam[path.id].path_score > path.path_score):
                 next_beam[path.id] = path
                 continue
-            
+
             # Expand the current path by all possible operations from the last node.
             for op_type, node in path.nodes[-1].children.items():
                 new_path = path.expand(node, op_type)
@@ -686,50 +867,47 @@ def merge_align(nodes, beam_size=100):
         cur_beam = next_beam
         if all([p.nodes[-1].is_end for p in cur_beam.values()]):
             break
-    
-        # Sort the paths by score and return the top beam_size paths  .      
+
+        # Sort the paths by score and return the top beam_size paths  .
         sorted_paths = sorted(cur_beam.values(), key=lambda p: p.path_score)
         cur_beam = {p.id: p for p in sorted_paths[:beam_size]}
-    
+
     # Return the best path
     best_path = min(next_beam.values(), key=lambda p: p.path_score)
+    best_path.nodes.pop(0)
     return best_path, next_beam
 
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
-# x
 
-
-
-
-
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
+# x
 
 
 def count_consecutive(B, hyp, ref):

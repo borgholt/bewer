@@ -11,7 +11,7 @@ from bewer.core.op import Op
 from bewer.core.op import OpList
 from bewer.core.op import OpType
 from bewer.alignment.edit_distance import levenshtein_score_matrix
-from bewer.alignment.edit_distance import levenshtein_score_matrix_scored
+# from bewer.alignment.edit_distance import levenshtein_score_matrix_scored
 
 # from bewer.alignment.edit_distance import levenshtein_score_matrix_2
 from bewer.alignment.edit_distance import get_greedy_edit_ops
